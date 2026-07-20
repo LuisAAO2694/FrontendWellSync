@@ -10,6 +10,7 @@
 ---
 
 ## Descripción
+https://astro.build/ <- Se va a usar este framework
 
 WellSync es una aplicación web enfocada en el servidor que permite a los usuarios construir y mantener un estilo de vida saludable integral. A través de una sola plataforma, los usuarios pueden registrar y dar seguimiento a sus hábitos diarios de salud como hidratación, sueño, meditación y bienestar mental, así como planificar y ejecutar rutinas de entrenamiento personalizadas.
 
