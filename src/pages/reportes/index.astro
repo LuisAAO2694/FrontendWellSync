@@ -1,0 +1,114 @@
+---
+import AppLayout from '../../layouts/AppLayout.astro';
+import { getSessionToken, decodeSessionPayload, clearSessionCookie } from '../../lib/auth';
+import { apiFetch, ApiError } from '../../lib/api-client';
+
+const token = getSessionToken(Astro.cookies)!;
+const payload = decodeSessionPayload(token);
+
+if (!payload) {
+    clearSessionCookie(Astro.cookies);
+    return Astro.redirect('/login');
+}
+
+const esAdmin = payload.rol === 'administrador';
+
+if (Astro.request.method === 'POST' && esAdmin) {
+    const formData = await Astro.request.formData();
+    const id = String(formData.get('id') ?? '');
+    const estado = String(formData.get('estado') ?? '');
+
+    try {
+        await apiFetch(`/api/reportes/${id}`, { method: 'PUT', token, body: { estado } });
+        return Astro.redirect('/reportes');
+    } catch (e) {
+        if (e instanceof ApiError && e.statusCode === 401) {
+            clearSessionCookie(Astro.cookies);
+            return Astro.redirect('/login');
+        }
+        const message = e instanceof Error ? e.message : 'Error desconocido';
+        return Astro.redirect(`/reportes?error=${encodeURIComponent(message)}`);
+    }
+}
+
+interface Reporte {
+    _id: string;
+    usuario: string;
+    tipo: string;
+    descripcion: string;
+    estado: 'abierto' | 'en_proceso' | 'resuelto';
+    fechaCreacion: string;
+}
+
+interface Usuario {
+    _id: string;
+    nombre: string;
+}
+
+let reportes: Reporte[] = [];
+let nombresUsuarios = new Map<string, string>();
+let errorMessage = Astro.url.searchParams.get('error');
+
+try {
+    reportes = await apiFetch<Reporte[]>('/api/reportes', { token });
+    reportes.sort((a, b) => new Date(b.fechaCreacion).getTime() - new Date(a.fechaCreacion).getTime());
+
+    if (esAdmin) {
+        const usuarios = await apiFetch<Usuario[]>('/api/usuarios', { token });
+        nombresUsuarios = new Map(usuarios.map((u) => [u._id, u.nombre]));
+    }
+} catch (e) {
+    if (e instanceof ApiError && e.statusCode === 401) {
+        clearSessionCookie(Astro.cookies);
+        return Astro.redirect('/login');
+    }
+    errorMessage = e instanceof Error ? e.message : 'Error desconocido';
+}
+
+const ESTADOS: Array<'abierto' | 'en_proceso' | 'resuelto'> = ['abierto', 'en_proceso', 'resuelto'];
+---
+<AppLayout title="Reportes">
+    <div class="flex items-center justify-between mb-4">
+        <h1 class="text-2xl font-bold">{esAdmin ? 'Todos los reportes' : 'Mis reportes'}</h1>
+        <a href="/reportes/nuevo" class="bg-blue-600 text-white rounded px-3 py-2">+ Nuevo reporte</a>
+    </div>
+
+    {errorMessage && <p class="text-red-600 mb-3">{errorMessage}</p>}
+
+    <table class="w-full bg-white rounded-lg shadow overflow-hidden">
+        <thead class="bg-gray-100 text-left">
+            <tr>
+                <th class="p-3">Tipo</th>
+                <th class="p-3">Descripción</th>
+                {esAdmin && <th class="p-3">Reportado por</th>}
+                <th class="p-3">Fecha</th>
+                <th class="p-3">Estado</th>
+            </tr>
+        </thead>
+        <tbody>
+            {reportes.map((reporte) => (
+                <tr>
+                    <td class="p-3">{reporte.tipo}</td>
+                    <td class="p-3">{reporte.descripcion}</td>
+                    {esAdmin && <td class="p-3">{nombresUsuarios.get(reporte.usuario) ?? '—'}</td>}
+                    <td class="p-3">{new Date(reporte.fechaCreacion).toLocaleDateString('es-MX', { timeZone: 'UTC' })}</td>
+                    <td class="p-3">
+                        {esAdmin ? (
+                            <form method="POST" class="flex items-center gap-2">
+                                <input type="hidden" name="id" value={reporte._id} />
+                                <select name="estado" class="border rounded px-2 py-1 text-sm">
+                                    {ESTADOS.map((estado) => (
+                                        <option value={estado} selected={reporte.estado === estado}>{estado}</option>
+                                    ))}
+                                </select>
+                                <button type="submit" class="text-blue-600 text-sm">Guardar</button>
+                            </form>
+                        ) : (
+                            <span>{reporte.estado}</span>
+                        )}
+                    </td>
+                </tr>
+            ))}
+        </tbody>
+    </table>
+</AppLayout>
