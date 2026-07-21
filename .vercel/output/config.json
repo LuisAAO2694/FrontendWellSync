@@ -1,0 +1,120 @@
+{
+	"version": 3,
+	"routes": [
+		{
+			"handle": "filesystem"
+		},
+		{
+			"src": "^/_astro/(.*)$",
+			"headers": {
+				"cache-control": "public, max-age=31536000, immutable"
+			},
+			"continue": true
+		},
+		{
+			"src": "^/_server-islands/([^/]+?)/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/_image/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/api/google-login/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/api/login/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/api/logout/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/calorias/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/dashboard/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/entrenamientos/nuevo/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/entrenamientos/([^/]+?)/editar/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/entrenamientos/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/habitos/nuevo/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/habitos/([^/]+?)/editar/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/habitos/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/login/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/logros/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/notificaciones/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/perfil/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/registros/nuevo/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/registros/([^/]+?)/editar/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/registros/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/reportes/nuevo/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/reportes/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/usuarios/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/404/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/.*$",
+			"dest": "_render",
+			"status": 404
+		}
+	]
+}
