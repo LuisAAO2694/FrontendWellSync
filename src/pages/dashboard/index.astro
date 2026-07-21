@@ -1,7 +1,58 @@
 ---
+import '../../styles/global.css';
+import { getSessionToken, decodeSessionPayload, clearSessionCookie } from '../../lib/auth';
+import { apiFetch, ApiError } from '../../lib/api-client';
+
+const token = getSessionToken(Astro.cookies)!;
+const payload = decodeSessionPayload(token);
+
+if (!payload) {
+    clearSessionCookie(Astro.cookies);
+    return Astro.redirect('/login');
+}
+
+interface UsuarioPerfil {
+    _id: string;
+    nombre: string;
+    email: string;
+}
+
+let usuario: UsuarioPerfil | null = null;
+let errorMessage: string | null = null;
+
+try {
+    usuario = await apiFetch<UsuarioPerfil>(`/api/usuarios/${payload.id}`, { token });
+} catch (e) {
+    if (e instanceof ApiError && e.statusCode === 401) {
+        clearSessionCookie(Astro.cookies);
+        return Astro.redirect('/login');
+    }
+    errorMessage = e instanceof Error ? e.message : 'Error desconocido';
+}
 ---
-<html>
-	<body>
-		<h1>Dashboard</h1>
-	</body>
+<html lang="es">
+    <head>
+        <meta charset="utf-8" />
+        <title>WellSync — Dashboard</title>
+    </head>
+    <body class="min-h-screen bg-gray-50 p-6">
+        {errorMessage && <p class="text-red-600">{errorMessage}</p>}
+        {usuario && (
+            <div class="max-w-md mx-auto bg-white rounded-lg shadow p-6">
+                <h1 class="text-2xl font-bold mb-2">Hola, {usuario.nombre}</h1>
+                <p class="text-gray-600">{usuario.email}</p>
+                <form id="logout-form" class="mt-4">
+                    <button type="submit" class="bg-gray-800 text-white rounded px-3 py-2">Cerrar sesión</button>
+                </form>
+            </div>
+        )}
+
+        <script>
+            document.getElementById('logout-form')?.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                await fetch('/api/logout', { method: 'POST' });
+                window.location.href = '/login';
+            });
+        </script>
+    </body>
 </html>
