@@ -1,0 +1,107 @@
+---
+import AppLayout from '../../layouts/AppLayout.astro';
+import { getSessionToken, clearSessionCookie } from '../../lib/auth';
+import { apiFetch, ApiError } from '../../lib/api-client';
+
+const token = getSessionToken(Astro.cookies)!;
+
+interface Habito {
+    _id: string;
+    nombre: string;
+    activo: boolean;
+}
+
+let errorMessage: string | null = null;
+const hoy = new Date().toISOString().slice(0, 10);
+let valores = { fecha: hoy, nivelEnergia: '3', habitosMarcados: new Set<string>() };
+
+let habitosActivos: Habito[] = [];
+try {
+    const habitos = await apiFetch<Habito[]>('/api/habitos', { token });
+    habitosActivos = habitos.filter((h) => h.activo);
+} catch (e) {
+    if (e instanceof ApiError && e.statusCode === 401) {
+        clearSessionCookie(Astro.cookies);
+        return Astro.redirect('/login');
+    }
+    errorMessage = e instanceof Error ? e.message : 'Error desconocido';
+}
+
+if (Astro.request.method === 'POST') {
+    const formData = await Astro.request.formData();
+    const fecha = String(formData.get('fecha') ?? '');
+    const nivelEnergia = Number(formData.get('nivelEnergia'));
+    const habitosMarcados = new Set(habitosActivos.filter((h) => formData.get(`habito_${h._id}`) === 'on').map((h) => h._id));
+
+    valores = { fecha, nivelEnergia: String(nivelEnergia), habitosMarcados };
+
+    const erroresLocales: string[] = [];
+    if (!fecha || isNaN(new Date(fecha).getTime())) erroresLocales.push('La fecha no es válida');
+    if (isNaN(nivelEnergia) || nivelEnergia < 1 || nivelEnergia > 5) erroresLocales.push('El nivel de energía debe ser un número entre 1 y 5');
+
+    if (erroresLocales.length === 0) {
+        try {
+            await apiFetch('/api/registros-diarios', {
+                method: 'POST',
+                token,
+                body: {
+                    fecha,
+                    nivelEnergia,
+                    habitosCompletados: habitosActivos.map((h) => ({
+                        habito: h._id,
+                        completado: habitosMarcados.has(h._id),
+                    })),
+                },
+            });
+            return Astro.redirect('/registros');
+        } catch (e) {
+            if (e instanceof ApiError && e.statusCode === 401) {
+                clearSessionCookie(Astro.cookies);
+                return Astro.redirect('/login');
+            }
+            errorMessage = e instanceof Error ? e.message : 'Error desconocido';
+        }
+    } else {
+        errorMessage = erroresLocales.join('. ');
+    }
+}
+---
+<AppLayout title="Nuevo registro">
+    <div class="max-w-md bg-white rounded-lg shadow p-6">
+        <h1 class="text-2xl font-bold mb-4">Nuevo registro diario</h1>
+
+        {errorMessage && <p class="text-red-600 mb-3">{errorMessage}</p>}
+
+        <form method="POST" class="flex flex-col gap-3">
+            <label class="text-sm text-gray-600">
+                Fecha
+                <input type="date" name="fecha" required value={valores.fecha} class="border rounded px-3 py-2 w-full" />
+            </label>
+
+            <label class="text-sm text-gray-600">
+                Nivel de energía
+                <select name="nivelEnergia" required class="border rounded px-3 py-2 w-full">
+                    <option value="1" selected={valores.nivelEnergia === '1'}>1 - Muy bajo</option>
+                    <option value="2" selected={valores.nivelEnergia === '2'}>2 - Bajo</option>
+                    <option value="3" selected={valores.nivelEnergia === '3'}>3 - Medio</option>
+                    <option value="4" selected={valores.nivelEnergia === '4'}>4 - Alto</option>
+                    <option value="5" selected={valores.nivelEnergia === '5'}>5 - Muy alto</option>
+                </select>
+            </label>
+
+            {habitosActivos.length > 0 && (
+                <fieldset class="border rounded px-3 py-2">
+                    <legend class="text-sm text-gray-600 px-1">Hábitos completados</legend>
+                    {habitosActivos.map((h) => (
+                        <label class="flex items-center gap-2">
+                            <input type="checkbox" name={`habito_${h._id}`} checked={valores.habitosMarcados.has(h._id)} />
+                            {h.nombre}
+                        </label>
+                    ))}
+                </fieldset>
+            )}
+
+            <button type="submit" class="bg-blue-600 text-white rounded px-3 py-2">Guardar</button>
+        </form>
+    </div>
+</AppLayout>
