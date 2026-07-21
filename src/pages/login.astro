@@ -42,6 +42,14 @@ const googleClientId = import.meta.env.PUBLIC_GOOGLE_CLIENT_ID || null;
                 errorEl.classList.remove('hidden');
             }
 
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('registrado') === '1') {
+                const msg = document.createElement('p');
+                msg.className = 'text-green-600 mt-2 text-sm';
+                msg.textContent = 'Cuenta creada con éxito. Inicia sesión.';
+                form.parentNode.insertBefore(msg, form.nextSibling);
+            }
+
             form.addEventListener('submit', async (event) => {
                 event.preventDefault();
                 errorEl.classList.add('hidden');
