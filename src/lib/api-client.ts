@@ -57,11 +57,15 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
         headers['Content-Type'] = 'application/json';
     }
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
     let response: Response;
     try {
         response = await fetch(url, {
             method: options.method ?? 'GET',
             headers,
+            signal: controller.signal,
             body:
                 options.body === undefined
                     ? undefined
@@ -69,9 +73,14 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
                       ? (options.body as FormData)
                       : JSON.stringify(options.body),
         });
-    } catch {
+    } catch (e) {
+        clearTimeout(timeoutId);
+        if (e instanceof DOMException && e.name === 'AbortError') {
+            throw new ApiConnectionError('El servidor no respondió a tiempo. Intenta de nuevo más tarde.');
+        }
         throw new ApiConnectionError('No se pudo contactar al servidor. Verifica que el backend esté corriendo.');
     }
+    clearTimeout(timeoutId);
 
     let data: T | BackendErrorBody;
     try {
