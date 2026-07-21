@@ -1,0 +1,65 @@
+---
+import AppLayout from '../layouts/AppLayout.astro';
+import { getSessionToken, clearSessionCookie } from '../lib/auth';
+import { apiFetch, ApiError } from '../lib/api-client';
+
+const token = getSessionToken(Astro.cookies)!;
+
+const actividad = Astro.url.searchParams.get('actividad') ?? '';
+const weight = Astro.url.searchParams.get('weight') ?? '';
+const duration = Astro.url.searchParams.get('duration') ?? '';
+
+let errorMessage: string | null = null;
+let resultados: Record<string, unknown>[] | null = null;
+
+if (actividad) {
+    const params = new URLSearchParams({ actividad });
+    if (weight) params.set('weight', weight);
+    if (duration) params.set('duration', duration);
+
+    try {
+        resultados = await apiFetch<Record<string, unknown>[]>(`/api/calorias/calcular?${params.toString()}`, { token });
+    } catch (e) {
+        if (e instanceof ApiError && e.statusCode === 401) {
+            clearSessionCookie(Astro.cookies);
+            return Astro.redirect('/login');
+        }
+        errorMessage = e instanceof Error ? e.message : 'Error desconocido';
+    }
+}
+---
+<AppLayout title="Calorías">
+    <div class="max-w-md bg-white rounded-lg shadow p-6">
+        <h1 class="text-2xl font-bold mb-4">Calculadora de calorías</h1>
+
+        <form method="GET" class="flex flex-col gap-3">
+            <label class="text-sm text-gray-600">
+                Actividad
+                <input type="text" name="actividad" required value={actividad} placeholder="ej. running" class="border rounded px-3 py-2 w-full" />
+            </label>
+            <label class="text-sm text-gray-600">
+                Peso en libras (opcional)
+                <input type="number" name="weight" min="1" value={weight} class="border rounded px-3 py-2 w-full" />
+            </label>
+            <label class="text-sm text-gray-600">
+                Duración en minutos (opcional)
+                <input type="number" name="duration" min="1" value={duration} class="border rounded px-3 py-2 w-full" />
+            </label>
+            <button type="submit" class="bg-blue-600 text-white rounded px-3 py-2">Calcular</button>
+        </form>
+
+        {errorMessage && <p class="text-red-600 mt-3">{errorMessage}</p>}
+
+        {resultados && resultados.length > 0 && (
+            <div class="mt-4 flex flex-col gap-2">
+                {resultados.map((item) => (
+                    <div class="border rounded p-3">
+                        {Object.entries(item).map(([clave, valor]) => (
+                            <p class="text-sm"><span class="font-semibold">{clave}:</span> {String(valor)}</p>
+                        ))}
+                    </div>
+                ))}
+            </div>
+        )}
+    </div>
+</AppLayout>
