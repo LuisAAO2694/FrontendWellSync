@@ -1,7 +1,7 @@
 import { defineMiddleware } from 'astro:middleware';
 import { getSessionToken } from './lib/auth';
 
-const PROTECTED_PREFIXES = ['/dashboard', '/habitos', '/registros', '/entrenamientos', '/perfil', '/logros', '/notificaciones', '/calorias'];
+const PROTECTED_PREFIXES = ['/dashboard', '/habitos', '/registros', '/entrenamientos', '/perfil', '/logros', '/notificaciones', '/calorias', '/reportes'];
 
 export const onRequest = defineMiddleware((context, next) => {
     const isProtected = PROTECTED_PREFIXES.some((prefix) => context.url.pathname.startsWith(prefix));

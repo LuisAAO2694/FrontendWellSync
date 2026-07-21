@@ -1,0 +1,82 @@
+---
+import AppLayout from '../../layouts/AppLayout.astro';
+import { TIPOS_REPORTE } from '../../lib/reporte-tipos';
+import { getSessionToken, clearSessionCookie } from '../../lib/auth';
+import { apiFetch, ApiError } from '../../lib/api-client';
+
+const token = getSessionToken(Astro.cookies)!;
+
+let errorMessage: string | null = null;
+let valores = { tipoSeleccionado: '', tipoOtro: '', descripcion: '' };
+
+if (Astro.request.method === 'POST') {
+    const formData = await Astro.request.formData();
+    const tipoSeleccionado = String(formData.get('tipo') ?? '').trim();
+    const tipoOtro = String(formData.get('tipoOtro') ?? '').trim();
+    const descripcion = String(formData.get('descripcion') ?? '').trim();
+    const tipo = tipoSeleccionado === 'Otro' ? tipoOtro : tipoSeleccionado;
+
+    valores = { tipoSeleccionado, tipoOtro, descripcion };
+
+    const erroresLocales: string[] = [];
+    if (!tipo) erroresLocales.push('El tipo de reporte es obligatorio');
+    if (!descripcion) erroresLocales.push('La descripción es obligatoria');
+
+    if (erroresLocales.length === 0) {
+        try {
+            await apiFetch('/api/reportes', {
+                method: 'POST',
+                token,
+                body: { tipo, descripcion },
+            });
+            return Astro.redirect('/reportes');
+        } catch (e) {
+            if (e instanceof ApiError && e.statusCode === 401) {
+                clearSessionCookie(Astro.cookies);
+                return Astro.redirect('/login');
+            }
+            errorMessage = e instanceof Error ? e.message : 'Error desconocido';
+        }
+    } else {
+        errorMessage = erroresLocales.join('. ');
+    }
+}
+---
+<AppLayout title="Nuevo reporte">
+    <div class="max-w-md bg-white rounded-lg shadow p-6">
+        <h1 class="text-2xl font-bold mb-4">Nuevo reporte</h1>
+
+        {errorMessage && <p class="text-red-600 mb-3">{errorMessage}</p>}
+
+        <form method="POST" class="flex flex-col gap-3">
+            <select id="tipo-select" name="tipo" required class="border rounded px-3 py-2">
+                <option value="" disabled selected={!valores.tipoSeleccionado}>Selecciona un tipo</option>
+                {TIPOS_REPORTE.map((t) => (
+                    <option value={t} selected={valores.tipoSeleccionado === t}>{t}</option>
+                ))}
+                <option value="Otro" selected={valores.tipoSeleccionado === 'Otro'}>Otro</option>
+            </select>
+
+            <input
+                type="text"
+                id="tipo-otro"
+                name="tipoOtro"
+                placeholder="Especifica el tipo"
+                value={valores.tipoOtro}
+                class={`border rounded px-3 py-2 ${valores.tipoSeleccionado === 'Otro' ? '' : 'hidden'}`}
+            />
+
+            <textarea name="descripcion" required placeholder="Describe el problema o sugerencia" class="border rounded px-3 py-2">{valores.descripcion}</textarea>
+
+            <button type="submit" class="bg-blue-600 text-white rounded px-3 py-2">Enviar reporte</button>
+        </form>
+    </div>
+
+    <script>
+        const select = document.getElementById('tipo-select');
+        const otroInput = document.getElementById('tipo-otro');
+        select?.addEventListener('change', () => {
+            otroInput?.classList.toggle('hidden', select.value !== 'Otro');
+        });
+    </script>
+</AppLayout>
