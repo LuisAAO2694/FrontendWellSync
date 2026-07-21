@@ -1,7 +1,7 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 
-import vercel from '@astrojs/vercel';
+import node from '@astrojs/node';
 
 import tailwindcss from '@tailwindcss/vite';
 
@@ -9,8 +9,8 @@ import tailwindcss from '@tailwindcss/vite';
 export default defineConfig({
   output: 'server',
 
-  adapter: vercel({
-    imageService: true,
+  adapter: node({
+    mode: 'standalone'
   }),
 
   vite: {
