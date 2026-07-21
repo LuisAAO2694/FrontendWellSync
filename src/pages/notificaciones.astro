@@ -1,0 +1,82 @@
+---
+import AppLayout from '../layouts/AppLayout.astro';
+import { getSessionToken, clearSessionCookie } from '../lib/auth';
+import { apiFetch, ApiError } from '../lib/api-client';
+
+const token = getSessionToken(Astro.cookies)!;
+
+if (Astro.request.method === 'POST') {
+    const formData = await Astro.request.formData();
+
+    try {
+        if (formData.has('marcarLeida')) {
+            const id = String(formData.get('id') ?? '');
+            await apiFetch(`/api/notificaciones/${id}/leer`, { method: 'PATCH', token });
+        } else if (formData.has('marcarTodas')) {
+            await apiFetch('/api/notificaciones/leer-todas', { method: 'PATCH', token });
+        }
+        return Astro.redirect('/notificaciones');
+    } catch (e) {
+        if (e instanceof ApiError && e.statusCode === 401) {
+            clearSessionCookie(Astro.cookies);
+            return Astro.redirect('/login');
+        }
+        const message = e instanceof Error ? e.message : 'Error desconocido';
+        return Astro.redirect(`/notificaciones?error=${encodeURIComponent(message)}`);
+    }
+}
+
+interface Notificacion {
+    _id: string;
+    tipo: string;
+    mensaje: string;
+    leida: boolean;
+    fecha: string;
+}
+
+let notificaciones: Notificacion[] = [];
+let errorMessage = Astro.url.searchParams.get('error');
+
+try {
+    notificaciones = await apiFetch<Notificacion[]>('/api/notificaciones', { token });
+} catch (e) {
+    if (e instanceof ApiError && e.statusCode === 401) {
+        clearSessionCookie(Astro.cookies);
+        return Astro.redirect('/login');
+    }
+    errorMessage = e instanceof Error ? e.message : 'Error desconocido';
+}
+
+const noLeidas = notificaciones.filter((n) => !n.leida).length;
+---
+<AppLayout title="Notificaciones">
+    <div class="flex items-center justify-between mb-4">
+        <h1 class="text-2xl font-bold">
+            Notificaciones {noLeidas > 0 && <span class="text-sm text-red-600">({noLeidas} sin leer)</span>}
+        </h1>
+        {noLeidas > 0 && (
+            <form method="POST">
+                <button type="submit" name="marcarTodas" value="1" class="bg-gray-800 text-white rounded px-3 py-2 text-sm">Marcar todas leídas</button>
+            </form>
+        )}
+    </div>
+
+    {errorMessage && <p class="text-red-600 mb-3">{errorMessage}</p>}
+
+    <ul class="flex flex-col gap-2">
+        {notificaciones.map((n) => (
+            <li class={`bg-white rounded-lg shadow p-3 flex items-center justify-between ${n.leida ? 'opacity-60' : ''}`}>
+                <div>
+                    <p>{n.mensaje}</p>
+                    <p class="text-xs text-gray-500">{new Date(n.fecha).toLocaleString('es-MX', { timeZone: 'UTC' })}</p>
+                </div>
+                {!n.leida && (
+                    <form method="POST">
+                        <input type="hidden" name="id" value={n._id} />
+                        <button type="submit" name="marcarLeida" value="1" class="text-blue-600 text-sm">Marcar leída</button>
+                    </form>
+                )}
+            </li>
+        ))}
+    </ul>
+</AppLayout>
