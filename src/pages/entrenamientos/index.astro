@@ -1,0 +1,101 @@
+---
+import AppLayout from '../../layouts/AppLayout.astro';
+import { getSessionToken, clearSessionCookie } from '../../lib/auth';
+import { apiFetch, ApiError } from '../../lib/api-client';
+
+const token = getSessionToken(Astro.cookies)!;
+
+if (Astro.request.method === 'POST') {
+    const formData = await Astro.request.formData();
+    const id = String(formData.get('id') ?? '');
+
+    try {
+        await apiFetch(`/api/entrenamientos/${id}`, { method: 'DELETE', token });
+        return Astro.redirect('/entrenamientos');
+    } catch (e) {
+        if (e instanceof ApiError && e.statusCode === 401) {
+            clearSessionCookie(Astro.cookies);
+            return Astro.redirect('/login');
+        }
+        const message = e instanceof Error ? e.message : 'Error desconocido';
+        return Astro.redirect(`/entrenamientos?error=${encodeURIComponent(message)}`);
+    }
+}
+
+interface Entrenamiento {
+    _id: string;
+    fecha: string;
+    hora: string;
+    estado: 'pendiente' | 'completado';
+    ejercicios: { completado: boolean }[];
+}
+
+let entrenamientos: Entrenamiento[] = [];
+let errorMessage = Astro.url.searchParams.get('error');
+
+try {
+    entrenamientos = await apiFetch<Entrenamiento[]>('/api/entrenamientos', { token });
+    entrenamientos.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+} catch (e) {
+    if (e instanceof ApiError && e.statusCode === 401) {
+        clearSessionCookie(Astro.cookies);
+        return Astro.redirect('/login');
+    }
+    errorMessage = e instanceof Error ? e.message : 'Error desconocido';
+}
+---
+<AppLayout title="Entrenamientos">
+    <div class="flex items-center justify-between mb-4">
+        <h1 class="text-2xl font-bold">Entrenamientos</h1>
+        <a href="/entrenamientos/nuevo" class="bg-blue-600 text-white rounded px-3 py-2">+ Nuevo entrenamiento</a>
+    </div>
+
+    {errorMessage && <p class="text-red-600 mb-3">{errorMessage}</p>}
+
+    <table class="w-full bg-white rounded-lg shadow overflow-hidden">
+        <thead class="bg-gray-100 text-left">
+            <tr>
+                <th class="p-3">Fecha</th>
+                <th class="p-3">Hora</th>
+                <th class="p-3">Estado</th>
+                <th class="p-3">Ejercicios completados</th>
+                <th class="p-3">Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {entrenamientos.map((entrenamiento) => {
+                const completados = entrenamiento.ejercicios.filter((e) => e.completado).length;
+                const total = entrenamiento.ejercicios.length;
+                return (
+                    <tr>
+                        <td class="p-3">{new Date(entrenamiento.fecha).toLocaleDateString('es-MX', { timeZone: 'UTC' })}</td>
+                        <td class="p-3">{entrenamiento.hora}</td>
+                        <td class="p-3">
+                            <span class={entrenamiento.estado === 'completado' ? 'text-green-700' : 'text-gray-500'}>
+                                {entrenamiento.estado === 'completado' ? 'Completado' : 'Pendiente'}
+                            </span>
+                        </td>
+                        <td class="p-3">{completados} / {total}</td>
+                        <td class="p-3 flex gap-2">
+                            <a href={`/entrenamientos/${entrenamiento._id}/editar`} class="text-blue-600">Editar</a>
+                            <form method="POST" class="confirmar-eliminar">
+                                <input type="hidden" name="id" value={entrenamiento._id} />
+                                <button type="submit" class="text-red-600">Eliminar</button>
+                            </form>
+                        </td>
+                    </tr>
+                );
+            })}
+        </tbody>
+    </table>
+
+    <script>
+        document.querySelectorAll('.confirmar-eliminar').forEach((form) => {
+            form.addEventListener('submit', (event) => {
+                if (!confirm('¿Eliminar este entrenamiento? Esta acción no se puede deshacer.')) {
+                    event.preventDefault();
+                }
+            });
+        });
+    </script>
+</AppLayout>
