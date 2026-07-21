@@ -1,0 +1,110 @@
+---
+import AppLayout from '../../layouts/AppLayout.astro';
+import { getSessionToken, clearSessionCookie } from '../../lib/auth';
+import { apiFetch, ApiError } from '../../lib/api-client';
+
+const token = getSessionToken(Astro.cookies)!;
+
+if (Astro.request.method === 'POST') {
+    const formData = await Astro.request.formData();
+    const intent = formData.get('intent');
+    const id = String(formData.get('id') ?? '');
+
+    try {
+        if (intent === 'toggle') {
+            const nuevoActivo = formData.get('nuevoActivo') === 'true';
+            await apiFetch(`/api/habitos/${id}`, { method: 'PUT', token, body: { activo: nuevoActivo } });
+        } else if (intent === 'delete') {
+            await apiFetch(`/api/habitos/${id}`, { method: 'DELETE', token });
+        }
+        return Astro.redirect('/habitos');
+    } catch (e) {
+        if (e instanceof ApiError && e.statusCode === 401) {
+            clearSessionCookie(Astro.cookies);
+            return Astro.redirect('/login');
+        }
+        const message = e instanceof Error ? e.message : 'Error desconocido';
+        return Astro.redirect(`/habitos?error=${encodeURIComponent(message)}`);
+    }
+}
+
+interface Habito {
+    _id: string;
+    nombre: string;
+    categoria: string;
+    metaDiaria: string;
+    horarioRecordatorio?: string;
+    activo: boolean;
+}
+
+let habitos: Habito[] = [];
+let errorMessage = Astro.url.searchParams.get('error');
+
+try {
+    habitos = await apiFetch<Habito[]>('/api/habitos', { token });
+} catch (e) {
+    if (e instanceof ApiError && e.statusCode === 401) {
+        clearSessionCookie(Astro.cookies);
+        return Astro.redirect('/login');
+    }
+    errorMessage = e instanceof Error ? e.message : 'Error desconocido';
+}
+---
+<AppLayout title="Hábitos">
+    <div class="flex items-center justify-between mb-4">
+        <h1 class="text-2xl font-bold">Hábitos</h1>
+        <a href="/habitos/nuevo" class="bg-blue-600 text-white rounded px-3 py-2">+ Nuevo hábito</a>
+    </div>
+
+    {errorMessage && <p class="text-red-600 mb-3">{errorMessage}</p>}
+
+    <table class="w-full bg-white rounded-lg shadow overflow-hidden">
+        <thead class="bg-gray-100 text-left">
+            <tr>
+                <th class="p-3">Nombre</th>
+                <th class="p-3">Categoría</th>
+                <th class="p-3">Meta diaria</th>
+                <th class="p-3">Estado</th>
+                <th class="p-3">Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {habitos.map((habito) => (
+                <tr class={habito.activo ? '' : 'opacity-50'}>
+                    <td class="p-3">{habito.nombre}</td>
+                    <td class="p-3">{habito.categoria}</td>
+                    <td class="p-3">{habito.metaDiaria}</td>
+                    <td class="p-3">
+                        <span class={habito.activo ? 'text-green-700' : 'text-gray-500'}>
+                            {habito.activo ? 'Activo' : 'Pausado'}
+                        </span>
+                    </td>
+                    <td class="p-3 flex gap-2">
+                        <a href={`/habitos/${habito._id}/editar`} class="text-blue-600">Editar</a>
+                        <form method="POST">
+                            <input type="hidden" name="intent" value="toggle" />
+                            <input type="hidden" name="id" value={habito._id} />
+                            <input type="hidden" name="nuevoActivo" value={(!habito.activo).toString()} />
+                            <button type="submit" class="text-gray-700">{habito.activo ? 'Pausar' : 'Reactivar'}</button>
+                        </form>
+                        <form method="POST" class="confirmar-eliminar">
+                            <input type="hidden" name="intent" value="delete" />
+                            <input type="hidden" name="id" value={habito._id} />
+                            <button type="submit" class="text-red-600">Eliminar</button>
+                        </form>
+                    </td>
+                </tr>
+            ))}
+        </tbody>
+    </table>
+
+    <script>
+        document.querySelectorAll('.confirmar-eliminar').forEach((form) => {
+            form.addEventListener('submit', (event) => {
+                if (!confirm('¿Eliminar este hábito? Esta acción no se puede deshacer.')) {
+                    event.preventDefault();
+                }
+            });
+        });
+    </script>
+</AppLayout>
