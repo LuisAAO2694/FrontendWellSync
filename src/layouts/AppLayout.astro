@@ -11,6 +11,28 @@ const { title } = Astro.props;
 const token = getSessionToken(Astro.cookies);
 const payload = token ? decodeSessionPayload(token) : null;
 const esAdmin = payload?.rol === 'administrador';
+
+function esActivo(href: string): boolean {
+    const pathname = Astro.url.pathname;
+    return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function claseLink(href: string): string {
+    return esActivo(href) ? 'text-blue-600 font-semibold' : 'text-gray-600 hover:text-gray-900';
+}
+
+const enlaces = [
+    { href: '/dashboard', texto: 'Dashboard' },
+    { href: '/habitos', texto: 'Hábitos' },
+    { href: '/registros', texto: 'Registros' },
+    { href: '/entrenamientos', texto: 'Entrenamientos' },
+    { href: '/perfil', texto: 'Mi perfil' },
+    { href: '/logros', texto: 'Logros' },
+    { href: '/notificaciones', texto: 'Notificaciones' },
+    { href: '/calorias', texto: 'Calorías' },
+    { href: '/reportes', texto: 'Reportes' },
+    ...(esAdmin ? [{ href: '/usuarios', texto: 'Usuarios' }] : []),
+];
 ---
 <html lang="es">
     <head>
@@ -21,16 +43,11 @@ const esAdmin = payload?.rol === 'administrador';
         <nav class="bg-white shadow px-6 py-3 flex items-center justify-between">
             <div class="flex gap-4 items-center">
                 <span class="font-bold">WellSync</span>
-                <a href="/dashboard" class="text-gray-600 hover:text-gray-900">Dashboard</a>
-                <a href="/habitos" class="text-gray-600 hover:text-gray-900">Hábitos</a>
-                <a href="/registros" class="text-gray-600 hover:text-gray-900">Registros</a>
-                <a href="/entrenamientos" class="text-gray-600 hover:text-gray-900">Entrenamientos</a>
-                <a href="/perfil" class="text-gray-600 hover:text-gray-900">Mi perfil</a>
-                <a href="/logros" class="text-gray-600 hover:text-gray-900">Logros</a>
-                <a href="/notificaciones" class="text-gray-600 hover:text-gray-900">Notificaciones</a>
-                <a href="/calorias" class="text-gray-600 hover:text-gray-900">Calorías</a>
-                <a href="/reportes" class="text-gray-600 hover:text-gray-900">Reportes</a>
-                {esAdmin && <a href="/usuarios" class="text-gray-600 hover:text-gray-900">Usuarios</a>}
+                {enlaces.map((enlace) => (
+                    <a href={enlace.href} class={claseLink(enlace.href)} aria-current={esActivo(enlace.href) ? 'page' : undefined}>
+                        {enlace.texto}
+                    </a>
+                ))}
             </div>
             <form id="logout-form">
                 <button type="submit" class="text-gray-600 hover:text-gray-900">Cerrar sesión</button>
