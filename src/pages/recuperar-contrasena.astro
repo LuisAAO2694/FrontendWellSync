@@ -28,6 +28,7 @@ import '../styles/global.css';
             const form = document.getElementById('forgot-form');
             const errorEl = document.getElementById('forgot-error');
             const successEl = document.getElementById('forgot-success');
+            const submitBtn = form.querySelector('button[type="submit"]');
 
             function showError(message) {
                 errorEl.textContent = message;
@@ -45,22 +46,40 @@ import '../styles/global.css';
                 event.preventDefault();
                 errorEl.classList.add('hidden');
                 successEl.classList.add('hidden');
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Enviando...';
 
                 const formData = new FormData(form);
                 const email = formData.get('email');
 
-                const response = await fetch('/api/forgot-password', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email }),
-                });
-                const data = await response.json();
+                try {
+                    const response = await fetch('/api/forgot-password', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email }),
+                    });
 
-                if (data.success) {
-                    showSuccess('Si el email está registrado, recibirás un enlace de recuperación.');
-                } else {
-                    showError(data.message ?? 'No se pudo procesar la solicitud');
+                    let data;
+                    try {
+                        data = await response.json();
+                    } catch {
+                        showError('Error del servidor. Intenta de nuevo más tarde.');
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Enviar enlace';
+                        return;
+                    }
+
+                    if (data.success) {
+                        showSuccess('Si el email está registrado, recibirás un enlace de recuperación.');
+                    } else {
+                        showError(data.message ?? 'No se pudo procesar la solicitud');
+                    }
+                } catch {
+                    showError('Error de conexión. Verifica tu internet e intenta de nuevo.');
                 }
+
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Enviar enlace';
             });
         </script>
     </body>
