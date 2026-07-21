@@ -31,7 +31,13 @@ function extractErrorMessage(data: unknown): string {
         return 'Error desconocido del servidor';
     }
     if ('error' in data) {
-        return (data as BackendErrorBody).error.message;
+        const error = (data as { error: unknown }).error;
+        if (typeof error === 'string') {
+            return error;
+        }
+        if (typeof error === 'object' && error !== null && typeof (error as { message?: unknown }).message === 'string') {
+            return (error as BackendErrorBody['error']).message;
+        }
     }
     if ('errors' in data && Array.isArray((data as BackendValidationErrorBody).errors)) {
         return (data as BackendValidationErrorBody).errors.join('. ');
@@ -67,7 +73,15 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
         throw new ApiConnectionError('No se pudo contactar al servidor. Verifica que el backend esté corriendo.');
     }
 
-    const data = (await response.json()) as T | BackendErrorBody;
+    let data: T | BackendErrorBody;
+    try {
+        data = (await response.json()) as T | BackendErrorBody;
+    } catch {
+        if (!response.ok) {
+            throw new ApiError('Error desconocido del servidor', response.status);
+        }
+        return undefined as T;
+    }
 
     if (!response.ok) {
         throw new ApiError(extractErrorMessage(data), response.status);

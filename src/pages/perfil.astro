@@ -19,9 +19,20 @@ interface Usuario {
     fotoPerfil?: string;
 }
 
+function esUsuario(valor: unknown): valor is Usuario {
+    return (
+        typeof valor === 'object' &&
+        valor !== null &&
+        typeof (valor as Usuario)._id === 'string' &&
+        typeof (valor as Usuario).nombre === 'string' &&
+        typeof (valor as Usuario).email === 'string'
+    );
+}
+
 let errorMessage: string | null = null;
 let fotoErrorMessage: string | null = null;
 let valoresPerfil: { nombre: string; email: string } | null = null;
+let usuario: Usuario | null = null;
 
 if (Astro.request.method === 'POST') {
     const formData = await Astro.request.formData();
@@ -39,7 +50,7 @@ if (Astro.request.method === 'POST') {
 
         if (erroresLocales.length === 0) {
             try {
-                await apiFetch(`/api/usuarios/${payload.id}`, {
+                const respuesta = await apiFetch<unknown>(`/api/usuarios/${payload.id}`, {
                     method: 'PUT',
                     token,
                     body: {
@@ -48,6 +59,7 @@ if (Astro.request.method === 'POST') {
                         ...(password ? { password } : {}),
                     },
                 });
+                if (esUsuario(respuesta)) usuario = respuesta;
             } catch (e) {
                 if (e instanceof ApiError && e.statusCode === 401) {
                     clearSessionCookie(Astro.cookies);
@@ -66,11 +78,12 @@ if (Astro.request.method === 'POST') {
             const fotoFormData = new FormData();
             fotoFormData.append('foto', archivo);
             try {
-                await apiFetch(`/api/usuarios/${payload.id}/foto-perfil`, {
+                const respuesta = await apiFetch<unknown>(`/api/usuarios/${payload.id}/foto-perfil`, {
                     method: 'POST',
                     token,
                     body: fotoFormData,
                 });
+                if (esUsuario(respuesta)) usuario = respuesta;
             } catch (e) {
                 if (e instanceof ApiError && e.statusCode === 401) {
                     clearSessionCookie(Astro.cookies);
@@ -84,16 +97,17 @@ if (Astro.request.method === 'POST') {
     }
 }
 
-let usuario: Usuario | null = null;
-try {
-    usuario = await apiFetch<Usuario>(`/api/usuarios/${payload.id}`, { token });
-} catch (e) {
-    if (e instanceof ApiError && e.statusCode === 401) {
-        clearSessionCookie(Astro.cookies);
-        return Astro.redirect('/login');
-    }
-    if (!errorMessage) {
-        errorMessage = e instanceof Error ? e.message : 'Error desconocido';
+if (!usuario) {
+    try {
+        usuario = await apiFetch<Usuario>(`/api/usuarios/${payload.id}`, { token });
+    } catch (e) {
+        if (e instanceof ApiError && e.statusCode === 401) {
+            clearSessionCookie(Astro.cookies);
+            return Astro.redirect('/login');
+        }
+        if (!errorMessage) {
+            errorMessage = e instanceof Error ? e.message : 'Error desconocido';
+        }
     }
 }
 

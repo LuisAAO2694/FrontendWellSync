@@ -2,15 +2,14 @@
 import AppLayout from '../../layouts/AppLayout.astro';
 import { getSessionToken, clearSessionCookie } from '../../lib/auth';
 import { apiFetch, ApiError } from '../../lib/api-client';
-import { leerEjerciciosDeFormData, type EjercicioElegido } from '../../lib/entrenamiento-form';
+import {
+    procesarFormularioEntrenamiento,
+    type EjercicioElegido,
+    type FormularioEntrenamiento,
+    type ResultadoBusqueda,
+} from '../../lib/entrenamiento-form';
 
 const token = getSessionToken(Astro.cookies)!;
-
-interface ResultadoBusqueda {
-    exerciseId: string;
-    name: string;
-    imageUrl?: string;
-}
 
 let errorMessage: string | null = null;
 let busquedaError: string | null = null;
@@ -23,57 +22,22 @@ let resultadosBusqueda: ResultadoBusqueda[] = [];
 
 if (Astro.request.method === 'POST') {
     const formData = await Astro.request.formData();
-    fecha = String(formData.get('fecha') ?? '');
-    hora = String(formData.get('hora') ?? '');
-    notasGenerales = String(formData.get('notasGenerales') ?? '');
-    q = String(formData.get('q') ?? '').trim();
-    ejerciciosElegidos = leerEjerciciosDeFormData(formData);
 
-    if (formData.has('agregar')) {
-        const raw = String(formData.get('agregar'));
-        const separador = raw.indexOf('::');
-        const exerciseId = raw.slice(0, separador);
-        const nombre = raw.slice(separador + 2);
-        if (exerciseId && !ejerciciosElegidos.some((e) => e.exerciseId === exerciseId)) {
-            ejerciciosElegidos.push({
-                exerciseId,
-                nombre,
-                series: 3,
-                repeticiones: 10,
-                peso: 0,
-                completado: false,
-                notaPersonal: '',
-            });
+    let estado: FormularioEntrenamiento;
+    try {
+        estado = await procesarFormularioEntrenamiento(formData, token);
+    } catch (e) {
+        if (e instanceof ApiError && e.statusCode === 401) {
+            clearSessionCookie(Astro.cookies);
+            return Astro.redirect('/login');
         }
+        throw e;
     }
 
-    if (formData.has('quitar')) {
-        const exerciseId = String(formData.get('quitar'));
-        ejerciciosElegidos = ejerciciosElegidos.filter((e) => e.exerciseId !== exerciseId);
-    }
-
-    if (q && !formData.has('guardar')) {
-        try {
-            resultadosBusqueda = await apiFetch<ResultadoBusqueda[]>(
-                `/api/ejercicios/buscar?q=${encodeURIComponent(q)}`,
-                { token },
-            );
-        } catch (e) {
-            if (e instanceof ApiError && e.statusCode === 401) {
-                clearSessionCookie(Astro.cookies);
-                return Astro.redirect('/login');
-            }
-            busquedaError = e instanceof Error ? e.message : 'Error desconocido';
-        }
-    }
+    ({ fecha, hora, notasGenerales, q, ejerciciosElegidos, resultadosBusqueda, busquedaError } = estado);
 
     if (formData.has('guardar')) {
-        const erroresLocales: string[] = [];
-        if (!fecha || isNaN(new Date(fecha).getTime())) erroresLocales.push('La fecha no es válida');
-        if (!hora) erroresLocales.push('La hora es obligatoria');
-        if (ejerciciosElegidos.length === 0) erroresLocales.push('Debe incluir al menos un ejercicio');
-
-        if (erroresLocales.length === 0) {
+        if (estado.erroresValidacion.length === 0) {
             try {
                 await apiFetch('/api/entrenamientos', {
                     method: 'POST',
@@ -101,7 +65,7 @@ if (Astro.request.method === 'POST') {
                 errorMessage = e instanceof Error ? e.message : 'Error desconocido';
             }
         } else {
-            errorMessage = erroresLocales.join('. ');
+            errorMessage = estado.erroresValidacion.join('. ');
         }
     }
 }
@@ -163,15 +127,15 @@ if (Astro.request.method === 'POST') {
                     <div class="flex gap-2">
                         <label class="text-xs text-gray-600">
                             Series
-                            <input type="number" name={`ej_${i}_series`} min="1" value={ej.series} class="border rounded px-2 py-1 w-full" />
+                            <input type="number" name={`ej_${i}_series`} min="1" required value={ej.series} class="border rounded px-2 py-1 w-full" />
                         </label>
                         <label class="text-xs text-gray-600">
                             Repeticiones
-                            <input type="number" name={`ej_${i}_repeticiones`} min="1" value={ej.repeticiones} class="border rounded px-2 py-1 w-full" />
+                            <input type="number" name={`ej_${i}_repeticiones`} min="1" required value={ej.repeticiones} class="border rounded px-2 py-1 w-full" />
                         </label>
                         <label class="text-xs text-gray-600">
                             Peso (kg)
-                            <input type="number" name={`ej_${i}_peso`} min="0" value={ej.peso} class="border rounded px-2 py-1 w-full" />
+                            <input type="number" name={`ej_${i}_peso`} min="0" required value={ej.peso} class="border rounded px-2 py-1 w-full" />
                         </label>
                     </div>
                     <label class="text-xs text-gray-600">
