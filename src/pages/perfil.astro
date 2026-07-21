@@ -1,0 +1,147 @@
+---
+import AppLayout from '../layouts/AppLayout.astro';
+import { getSessionToken, decodeSessionPayload, clearSessionCookie } from '../lib/auth';
+import { apiFetch, ApiError } from '../lib/api-client';
+import { getApiBaseUrl } from '../lib/config';
+
+const token = getSessionToken(Astro.cookies)!;
+const payload = decodeSessionPayload(token);
+
+if (!payload) {
+    clearSessionCookie(Astro.cookies);
+    return Astro.redirect('/login');
+}
+
+interface Usuario {
+    _id: string;
+    nombre: string;
+    email: string;
+    fotoPerfil?: string;
+}
+
+let errorMessage: string | null = null;
+let fotoErrorMessage: string | null = null;
+let valoresPerfil: { nombre: string; email: string } | null = null;
+
+if (Astro.request.method === 'POST') {
+    const formData = await Astro.request.formData();
+
+    if (formData.has('guardarPerfil')) {
+        const nombre = String(formData.get('nombre') ?? '').trim();
+        const email = String(formData.get('email') ?? '').trim();
+        const password = String(formData.get('password') ?? '');
+        valoresPerfil = { nombre, email };
+
+        const erroresLocales: string[] = [];
+        if (!nombre) erroresLocales.push('El nombre no puede estar vacío');
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) erroresLocales.push('Email no válido');
+        if (password && password.length < 8) erroresLocales.push('La contraseña debe tener al menos 8 caracteres');
+
+        if (erroresLocales.length === 0) {
+            try {
+                await apiFetch(`/api/usuarios/${payload.id}`, {
+                    method: 'PUT',
+                    token,
+                    body: {
+                        nombre,
+                        email,
+                        ...(password ? { password } : {}),
+                    },
+                });
+            } catch (e) {
+                if (e instanceof ApiError && e.statusCode === 401) {
+                    clearSessionCookie(Astro.cookies);
+                    return Astro.redirect('/login');
+                }
+                errorMessage = e instanceof Error ? e.message : 'Error desconocido';
+            }
+        } else {
+            errorMessage = erroresLocales.join('. ');
+        }
+    }
+
+    if (formData.has('subirFoto')) {
+        const archivo = formData.get('foto');
+        if (archivo instanceof File && archivo.size > 0) {
+            const fotoFormData = new FormData();
+            fotoFormData.append('foto', archivo);
+            try {
+                await apiFetch(`/api/usuarios/${payload.id}/foto-perfil`, {
+                    method: 'POST',
+                    token,
+                    body: fotoFormData,
+                });
+            } catch (e) {
+                if (e instanceof ApiError && e.statusCode === 401) {
+                    clearSessionCookie(Astro.cookies);
+                    return Astro.redirect('/login');
+                }
+                fotoErrorMessage = e instanceof Error ? e.message : 'Error desconocido';
+            }
+        } else {
+            fotoErrorMessage = 'Selecciona un archivo';
+        }
+    }
+}
+
+let usuario: Usuario | null = null;
+try {
+    usuario = await apiFetch<Usuario>(`/api/usuarios/${payload.id}`, { token });
+} catch (e) {
+    if (e instanceof ApiError && e.statusCode === 401) {
+        clearSessionCookie(Astro.cookies);
+        return Astro.redirect('/login');
+    }
+    if (!errorMessage) {
+        errorMessage = e instanceof Error ? e.message : 'Error desconocido';
+    }
+}
+
+if (!valoresPerfil && usuario) {
+    valoresPerfil = { nombre: usuario.nombre, email: usuario.email };
+}
+
+const apiBaseUrl = getApiBaseUrl();
+---
+<AppLayout title="Mi perfil">
+    <div class="max-w-md bg-white rounded-lg shadow p-6 flex flex-col gap-6">
+        <h1 class="text-2xl font-bold">Mi perfil</h1>
+
+        {usuario && (
+            <div class="flex flex-col items-center gap-3">
+                {usuario.fotoPerfil ? (
+                    <img src={`${apiBaseUrl}${usuario.fotoPerfil}`} alt="Foto de perfil" class="w-24 h-24 rounded-full object-cover" />
+                ) : (
+                    <div class="w-24 h-24 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm">Sin foto</div>
+                )}
+
+                {fotoErrorMessage && <p class="text-red-600 text-sm">{fotoErrorMessage}</p>}
+
+                <form method="POST" enctype="multipart/form-data" class="flex items-center gap-2">
+                    <input type="file" name="foto" accept="image/jpeg,image/png,image/webp" class="text-sm" />
+                    <button type="submit" name="subirFoto" value="1" class="bg-gray-800 text-white rounded px-3 py-2 text-sm">Subir foto</button>
+                </form>
+            </div>
+        )}
+
+        {errorMessage && <p class="text-red-600">{errorMessage}</p>}
+
+        {valoresPerfil && (
+            <form method="POST" class="flex flex-col gap-3">
+                <label class="text-sm text-gray-600">
+                    Nombre
+                    <input type="text" name="nombre" required value={valoresPerfil.nombre} class="border rounded px-3 py-2 w-full" />
+                </label>
+                <label class="text-sm text-gray-600">
+                    Email
+                    <input type="email" name="email" required value={valoresPerfil.email} class="border rounded px-3 py-2 w-full" />
+                </label>
+                <label class="text-sm text-gray-600">
+                    Nueva contraseña (dejar vacío para no cambiar)
+                    <input type="password" name="password" class="border rounded px-3 py-2 w-full" />
+                </label>
+                <button type="submit" name="guardarPerfil" value="1" class="bg-blue-600 text-white rounded px-3 py-2">Guardar cambios</button>
+            </form>
+        )}
+    </div>
+</AppLayout>
