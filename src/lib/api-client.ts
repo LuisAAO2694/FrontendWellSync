@@ -41,9 +41,14 @@ function extractErrorMessage(data: unknown): string {
 
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
     const url = `${getApiBaseUrl()}${path}`;
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const headers: Record<string, string> = {};
     if (options.token) {
         headers.Authorization = `Bearer ${options.token}`;
+    }
+
+    const esFormData = options.body instanceof FormData;
+    if (!esFormData) {
+        headers['Content-Type'] = 'application/json';
     }
 
     let response: Response;
@@ -51,7 +56,12 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
         response = await fetch(url, {
             method: options.method ?? 'GET',
             headers,
-            body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+            body:
+                options.body === undefined
+                    ? undefined
+                    : esFormData
+                      ? (options.body as FormData)
+                      : JSON.stringify(options.body),
         });
     } catch {
         throw new ApiConnectionError('No se pudo contactar al servidor. Verifica que el backend esté corriendo.');
