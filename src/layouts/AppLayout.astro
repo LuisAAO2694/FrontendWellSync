@@ -1,11 +1,16 @@
 ---
 import '../styles/global.css';
+import { getSessionToken, decodeSessionPayload } from '../lib/auth';
 
 interface Props {
     title: string;
 }
 
 const { title } = Astro.props;
+
+const token = getSessionToken(Astro.cookies);
+const payload = token ? decodeSessionPayload(token) : null;
+const esAdmin = payload?.rol === 'administrador';
 ---
 <html lang="es">
     <head>
@@ -25,6 +30,7 @@ const { title } = Astro.props;
                 <a href="/notificaciones" class="text-gray-600 hover:text-gray-900">Notificaciones</a>
                 <a href="/calorias" class="text-gray-600 hover:text-gray-900">Calorías</a>
                 <a href="/reportes" class="text-gray-600 hover:text-gray-900">Reportes</a>
+                {esAdmin && <a href="/usuarios" class="text-gray-600 hover:text-gray-900">Usuarios</a>}
             </div>
             <form id="logout-form">
                 <button type="submit" class="text-gray-600 hover:text-gray-900">Cerrar sesión</button>

@@ -1,0 +1,96 @@
+---
+import AppLayout from '../../layouts/AppLayout.astro';
+import { getSessionToken, decodeSessionPayload, clearSessionCookie } from '../../lib/auth';
+import { apiFetch, ApiError } from '../../lib/api-client';
+
+const token = getSessionToken(Astro.cookies)!;
+const payload = decodeSessionPayload(token);
+
+if (!payload) {
+    clearSessionCookie(Astro.cookies);
+    return Astro.redirect('/login');
+}
+
+if (Astro.request.method === 'POST') {
+    const formData = await Astro.request.formData();
+    const id = String(formData.get('id') ?? '');
+
+    try {
+        await apiFetch(`/api/usuarios/${id}`, { method: 'DELETE', token });
+        return Astro.redirect('/usuarios');
+    } catch (e) {
+        if (e instanceof ApiError && e.statusCode === 401) {
+            clearSessionCookie(Astro.cookies);
+            return Astro.redirect('/login');
+        }
+        const message = e instanceof Error ? e.message : 'Error desconocido';
+        return Astro.redirect(`/usuarios?error=${encodeURIComponent(message)}`);
+    }
+}
+
+interface Usuario {
+    _id: string;
+    nombre: string;
+    email: string;
+    rol: 'usuario' | 'administrador';
+    fechaRegistro: string;
+}
+
+let usuarios: Usuario[] = [];
+let errorMessage = Astro.url.searchParams.get('error');
+
+try {
+    usuarios = await apiFetch<Usuario[]>('/api/usuarios', { token });
+} catch (e) {
+    if (e instanceof ApiError && e.statusCode === 401) {
+        clearSessionCookie(Astro.cookies);
+        return Astro.redirect('/login');
+    }
+    errorMessage = e instanceof Error ? e.message : 'Error desconocido';
+}
+---
+<AppLayout title="Usuarios">
+    <h1 class="text-2xl font-bold mb-4">Usuarios</h1>
+
+    {errorMessage && <p class="text-red-600 mb-3">{errorMessage}</p>}
+
+    <table class="w-full bg-white rounded-lg shadow overflow-hidden">
+        <thead class="bg-gray-100 text-left">
+            <tr>
+                <th class="p-3">Nombre</th>
+                <th class="p-3">Email</th>
+                <th class="p-3">Rol</th>
+                <th class="p-3">Fecha de registro</th>
+                <th class="p-3">Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {usuarios.map((usuario) => (
+                <tr>
+                    <td class="p-3">{usuario.nombre}</td>
+                    <td class="p-3">{usuario.email}</td>
+                    <td class="p-3">{usuario.rol}</td>
+                    <td class="p-3">{new Date(usuario.fechaRegistro).toLocaleDateString('es-MX', { timeZone: 'UTC' })}</td>
+                    <td class="p-3">
+                        {usuario._id !== payload.id && (
+                            <form method="POST" class="confirmar-eliminar">
+                                <input type="hidden" name="id" value={usuario._id} />
+                                <button type="submit" class="text-red-600">Eliminar</button>
+                            </form>
+                        )}
+                    </td>
+                </tr>
+            ))}
+        </tbody>
+    </table>
+
+    <script>
+        document.querySelectorAll('.confirmar-eliminar').forEach((form) => {
+            form.addEventListener('submit', (event) => {
+                if (!confirm('¿Eliminar este usuario? Esta acción no se puede deshacer.')) {
+                    event.preventDefault();
+                }
+            });
+        });
+    </script>
+</AppLayout>
