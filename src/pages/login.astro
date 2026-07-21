@@ -21,6 +21,11 @@ const googleClientId = import.meta.env.PUBLIC_GOOGLE_CLIENT_ID || null;
 
             <p id="login-error" class="text-red-600 mt-2 hidden"></p>
 
+            <div class="mt-4 flex flex-col gap-2 text-center text-sm">
+                <a href="/registrar" class="text-blue-600 hover:underline">Crear cuenta</a>
+                <a href="/recuperar-contrasena" class="text-blue-600 hover:underline">Recuperar contraseña</a>
+            </div>
+
             {googleClientId && (
                 <div class="mt-4">
                     <div id="google-button"></div>
