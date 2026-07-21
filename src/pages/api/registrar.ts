@@ -1,7 +1,8 @@
 import type { APIRoute } from 'astro';
 import { apiFetch, ApiConnectionError, ApiError } from '../../lib/api-client';
+import { setSessionCookie } from '../../lib/auth';
 
-export const POST: APIRoute = async ({ request }) => {
+export const POST: APIRoute = async ({ request, cookies }) => {
     const body = await request.json();
     const { nombre, email, password } = body as { nombre?: unknown; email?: unknown; password?: unknown };
 
@@ -17,6 +18,13 @@ export const POST: APIRoute = async ({ request }) => {
             method: 'POST',
             body: { nombre, email, password },
         });
+
+        const result = await apiFetch<{ token: string }>('/api/usuarios/login', {
+            method: 'POST',
+            body: { email, password },
+        });
+
+        setSessionCookie(cookies, result.token);
         return new Response(JSON.stringify({ success: true }), {
             status: 201,
             headers: { 'Content-Type': 'application/json' },

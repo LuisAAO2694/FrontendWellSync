@@ -50,7 +50,7 @@ import '../styles/global.css';
                 const data = await response.json();
 
                 if (data.success) {
-                    window.location.href = '/login?registrado=1';
+                    window.location.href = '/dashboard';
                 } else {
                     showError(data.message ?? 'No se pudo crear la cuenta');
                 }
