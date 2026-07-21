@@ -22,6 +22,23 @@ interface BackendErrorBody {
     error: { message: string; statusCode: number };
 }
 
+interface BackendValidationErrorBody {
+    errors: string[];
+}
+
+function extractErrorMessage(data: unknown): string {
+    if (typeof data !== 'object' || data === null) {
+        return 'Error desconocido del servidor';
+    }
+    if ('error' in data) {
+        return (data as BackendErrorBody).error.message;
+    }
+    if ('errors' in data && Array.isArray((data as BackendValidationErrorBody).errors)) {
+        return (data as BackendValidationErrorBody).errors.join('. ');
+    }
+    return 'Error desconocido del servidor';
+}
+
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
     const url = `${getApiBaseUrl()}${path}`;
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -43,11 +60,7 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
     const data = (await response.json()) as T | BackendErrorBody;
 
     if (!response.ok) {
-        const message =
-            typeof data === 'object' && data !== null && 'error' in data
-                ? (data as BackendErrorBody).error.message
-                : 'Error desconocido del servidor';
-        throw new ApiError(message, response.status);
+        throw new ApiError(extractErrorMessage(data), response.status);
     }
 
     return data as T;
