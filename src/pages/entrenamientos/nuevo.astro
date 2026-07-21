@@ -1,0 +1,187 @@
+---
+import AppLayout from '../../layouts/AppLayout.astro';
+import { getSessionToken, clearSessionCookie } from '../../lib/auth';
+import { apiFetch, ApiError } from '../../lib/api-client';
+import { leerEjerciciosDeFormData, type EjercicioElegido } from '../../lib/entrenamiento-form';
+
+const token = getSessionToken(Astro.cookies)!;
+
+interface ResultadoBusqueda {
+    exerciseId: string;
+    name: string;
+    imageUrl?: string;
+}
+
+let errorMessage: string | null = null;
+let busquedaError: string | null = null;
+let fecha = '';
+let hora = '';
+let notasGenerales = '';
+let q = '';
+let ejerciciosElegidos: EjercicioElegido[] = [];
+let resultadosBusqueda: ResultadoBusqueda[] = [];
+
+if (Astro.request.method === 'POST') {
+    const formData = await Astro.request.formData();
+    fecha = String(formData.get('fecha') ?? '');
+    hora = String(formData.get('hora') ?? '');
+    notasGenerales = String(formData.get('notasGenerales') ?? '');
+    q = String(formData.get('q') ?? '').trim();
+    ejerciciosElegidos = leerEjerciciosDeFormData(formData);
+
+    if (formData.has('agregar')) {
+        const raw = String(formData.get('agregar'));
+        const separador = raw.indexOf('::');
+        const exerciseId = raw.slice(0, separador);
+        const nombre = raw.slice(separador + 2);
+        if (exerciseId && !ejerciciosElegidos.some((e) => e.exerciseId === exerciseId)) {
+            ejerciciosElegidos.push({
+                exerciseId,
+                nombre,
+                series: 3,
+                repeticiones: 10,
+                peso: 0,
+                completado: false,
+                notaPersonal: '',
+            });
+        }
+    }
+
+    if (formData.has('quitar')) {
+        const exerciseId = String(formData.get('quitar'));
+        ejerciciosElegidos = ejerciciosElegidos.filter((e) => e.exerciseId !== exerciseId);
+    }
+
+    if (q && !formData.has('guardar')) {
+        try {
+            resultadosBusqueda = await apiFetch<ResultadoBusqueda[]>(
+                `/api/ejercicios/buscar?q=${encodeURIComponent(q)}`,
+                { token },
+            );
+        } catch (e) {
+            if (e instanceof ApiError && e.statusCode === 401) {
+                clearSessionCookie(Astro.cookies);
+                return Astro.redirect('/login');
+            }
+            busquedaError = e instanceof Error ? e.message : 'Error desconocido';
+        }
+    }
+
+    if (formData.has('guardar')) {
+        const erroresLocales: string[] = [];
+        if (!fecha || isNaN(new Date(fecha).getTime())) erroresLocales.push('La fecha no es válida');
+        if (!hora) erroresLocales.push('La hora es obligatoria');
+        if (ejerciciosElegidos.length === 0) erroresLocales.push('Debe incluir al menos un ejercicio');
+
+        if (erroresLocales.length === 0) {
+            try {
+                await apiFetch('/api/entrenamientos', {
+                    method: 'POST',
+                    token,
+                    body: {
+                        fecha,
+                        hora,
+                        ...(notasGenerales ? { notasGenerales } : {}),
+                        ejercicios: ejerciciosElegidos.map((e) => ({
+                            exerciseId: e.exerciseId,
+                            nombre: e.nombre,
+                            series: e.series,
+                            repeticiones: e.repeticiones,
+                            peso: e.peso,
+                            ...(e.notaPersonal ? { notaPersonal: e.notaPersonal } : {}),
+                        })),
+                    },
+                });
+                return Astro.redirect('/entrenamientos');
+            } catch (e) {
+                if (e instanceof ApiError && e.statusCode === 401) {
+                    clearSessionCookie(Astro.cookies);
+                    return Astro.redirect('/login');
+                }
+                errorMessage = e instanceof Error ? e.message : 'Error desconocido';
+            }
+        } else {
+            errorMessage = erroresLocales.join('. ');
+        }
+    }
+}
+---
+<AppLayout title="Nuevo entrenamiento">
+    <div class="max-w-2xl bg-white rounded-lg shadow p-6">
+        <h1 class="text-2xl font-bold mb-4">Nuevo entrenamiento</h1>
+
+        {errorMessage && <p class="text-red-600 mb-3">{errorMessage}</p>}
+
+        <form method="POST" class="flex flex-col gap-4">
+            <div class="border rounded p-3">
+                <label class="text-sm text-gray-600">Buscar ejercicio</label>
+                <div class="flex gap-2 mt-1">
+                    <input type="text" name="q" value={q} class="border rounded px-3 py-2 flex-1" placeholder="ej. press de banca" />
+                    <button type="submit" name="buscar" value="1" class="bg-gray-800 text-white rounded px-3 py-2">Buscar</button>
+                </div>
+
+                {busquedaError && <p class="text-red-600 text-sm mt-2">{busquedaError}</p>}
+
+                {resultadosBusqueda.length > 0 && (
+                    <ul class="mt-3 flex flex-col gap-2">
+                        {resultadosBusqueda
+                            .filter((r) => !ejerciciosElegidos.some((e) => e.exerciseId === r.exerciseId))
+                            .map((r) => (
+                                <li class="flex items-center justify-between border rounded px-3 py-2">
+                                    <span>{r.name}</span>
+                                    <button type="submit" name="agregar" value={`${r.exerciseId}::${r.name}`} class="text-blue-600 text-sm">Agregar</button>
+                                </li>
+                            ))}
+                    </ul>
+                )}
+            </div>
+
+            <div class="flex gap-3">
+                <label class="text-sm text-gray-600 flex-1">
+                    Fecha
+                    <input type="date" name="fecha" required value={fecha} class="border rounded px-3 py-2 w-full" />
+                </label>
+                <label class="text-sm text-gray-600 flex-1">
+                    Hora
+                    <input type="time" name="hora" required value={hora} class="border rounded px-3 py-2 w-full" />
+                </label>
+            </div>
+
+            <label class="text-sm text-gray-600">
+                Notas generales (opcional)
+                <textarea name="notasGenerales" class="border rounded px-3 py-2 w-full">{notasGenerales}</textarea>
+            </label>
+
+            {ejerciciosElegidos.map((ej, i) => (
+                <div class="border rounded p-3 flex flex-col gap-2">
+                    <input type="hidden" name={`ej_${i}_exerciseId`} value={ej.exerciseId} />
+                    <input type="hidden" name={`ej_${i}_nombre`} value={ej.nombre} />
+                    <div class="flex items-center justify-between">
+                        <strong>{ej.nombre}</strong>
+                        <button type="submit" name="quitar" value={ej.exerciseId} class="text-red-600 text-sm">Quitar</button>
+                    </div>
+                    <div class="flex gap-2">
+                        <label class="text-xs text-gray-600">
+                            Series
+                            <input type="number" name={`ej_${i}_series`} min="1" value={ej.series} class="border rounded px-2 py-1 w-full" />
+                        </label>
+                        <label class="text-xs text-gray-600">
+                            Repeticiones
+                            <input type="number" name={`ej_${i}_repeticiones`} min="1" value={ej.repeticiones} class="border rounded px-2 py-1 w-full" />
+                        </label>
+                        <label class="text-xs text-gray-600">
+                            Peso (kg)
+                            <input type="number" name={`ej_${i}_peso`} min="0" value={ej.peso} class="border rounded px-2 py-1 w-full" />
+                        </label>
+                    </div>
+                    <label class="text-xs text-gray-600">
+                        Nota personal (opcional)
+                        <input type="text" name={`ej_${i}_notaPersonal`} value={ej.notaPersonal} class="border rounded px-2 py-1 w-full" />
+                    </label>
+                </div>
+            ))}
+
+            <button type="submit" name="guardar" value="1" class="bg-blue-600 text-white rounded px-3 py-2">Guardar entrenamiento</button>
+        </form>
+    </div>
+</AppLayout>
