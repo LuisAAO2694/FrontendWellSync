@@ -1,0 +1,97 @@
+---
+import AppLayout from '../../layouts/AppLayout.astro';
+import { getSessionToken, clearSessionCookie } from '../../lib/auth';
+import { apiFetch, ApiError } from '../../lib/api-client';
+
+const token = getSessionToken(Astro.cookies)!;
+
+if (Astro.request.method === 'POST') {
+    const formData = await Astro.request.formData();
+    const id = String(formData.get('id') ?? '');
+
+    try {
+        await apiFetch(`/api/logros/${id}`, { method: 'DELETE', token });
+        return Astro.redirect('/logros');
+    } catch (e) {
+        if (e instanceof ApiError && e.statusCode === 401) {
+            clearSessionCookie(Astro.cookies);
+            return Astro.redirect('/login');
+        }
+        const message = e instanceof Error ? e.message : 'Error desconocido';
+        return Astro.redirect(`/logros?error=${encodeURIComponent(message)}`);
+    }
+}
+
+interface Logro {
+    _id: string;
+    tipo: string;
+    habitoRelacionado?: string;
+    fechaObtenido: string;
+}
+
+interface Habito {
+    _id: string;
+    nombre: string;
+}
+
+let logros: Logro[] = [];
+let nombresHabitos = new Map<string, string>();
+let errorMessage = Astro.url.searchParams.get('error');
+
+try {
+    const [logrosResp, habitosResp] = await Promise.all([
+        apiFetch<Logro[]>('/api/logros', { token }),
+        apiFetch<Habito[]>('/api/habitos', { token }),
+    ]);
+    logros = logrosResp;
+    nombresHabitos = new Map(habitosResp.map((h) => [h._id, h.nombre]));
+    logros.sort((a, b) => new Date(b.fechaObtenido).getTime() - new Date(a.fechaObtenido).getTime());
+} catch (e) {
+    if (e instanceof ApiError && e.statusCode === 401) {
+        clearSessionCookie(Astro.cookies);
+        return Astro.redirect('/login');
+    }
+    errorMessage = e instanceof Error ? e.message : 'Error desconocido';
+}
+---
+<AppLayout title="Logros">
+    <h1 class="text-2xl font-bold mb-4">Logros</h1>
+
+    {errorMessage && <p class="text-red-600 mb-3">{errorMessage}</p>}
+
+    <table class="w-full bg-white rounded-lg shadow overflow-hidden">
+        <thead class="bg-gray-100 text-left">
+            <tr>
+                <th class="p-3">Tipo</th>
+                <th class="p-3">Fecha obtenida</th>
+                <th class="p-3">Hábito relacionado</th>
+                <th class="p-3">Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {logros.map((logro) => (
+                <tr>
+                    <td class="p-3">{logro.tipo}</td>
+                    <td class="p-3">{new Date(logro.fechaObtenido).toLocaleDateString('es-MX', { timeZone: 'UTC' })}</td>
+                    <td class="p-3">{logro.habitoRelacionado ? (nombresHabitos.get(logro.habitoRelacionado) ?? '—') : '—'}</td>
+                    <td class="p-3">
+                        <form method="POST" class="confirmar-eliminar">
+                            <input type="hidden" name="id" value={logro._id} />
+                            <button type="submit" class="text-red-600">Eliminar</button>
+                        </form>
+                    </td>
+                </tr>
+            ))}
+        </tbody>
+    </table>
+
+    <script>
+        document.querySelectorAll('.confirmar-eliminar').forEach((form) => {
+            form.addEventListener('submit', (event) => {
+                if (!confirm('¿Eliminar este logro? Esta acción no se puede deshacer.')) {
+                    event.preventDefault();
+                }
+            });
+        });
+    </script>
+</AppLayout>
